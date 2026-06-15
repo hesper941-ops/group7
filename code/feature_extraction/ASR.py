@@ -174,7 +174,7 @@ if __name__ == "__main__":
         exit()
 
     print("正在加载 Whisper (small) 与 SentenceTransformer 模型...")
-    whisper_model = whisper.load_model("small")
+    whisper_model = whisper.load_model("small", download_root="/share/home/tm1078571822880000/a904903640/group7/whisper")
     st_model = SentenceTransformer(LOCAL_SENTENCE_MODEL)
 
     # 遍历 VIDEO_NAMES 中的每个视频
