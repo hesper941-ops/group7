@@ -39,3 +39,5 @@ weights/
 # OS files
 .DS_Store
 Thumbs.db
+
+ViTModel/
