@@ -30,8 +30,8 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, Dataset
 
-os.environ.setdefault("HF_HOME", r"E:\smart AR\.hf_cache")
-os.environ.setdefault("HF_HUB_CACHE", r"E:\smart AR\.hf_cache\hub")
+os.environ.setdefault("HF_HOME", r"/share/home/tm1078571822880000/a904903640/group7/.hf_cache")
+os.environ.setdefault("HF_HUB_CACHE", r"/share/home/tm1078571822880000/a904903640/group7/.hf_cache/hub")
 os.makedirs(os.environ["HF_HUB_CACHE"], exist_ok=True)
 
 from transformers import ViTImageProcessor, ViTModel
@@ -41,8 +41,8 @@ from real_scene_utils import REAL_SCENE_CACHE_DIR, RealSceneFeatureCache, load_r
 # ============================================================
 # 1. Config
 # ============================================================
-ROOT_DIR = Path(r"E:\smart AR")
-PROCESSED_DATA_DIR = ROOT_DIR / "AR_Data_Process3.0" / "data"
+ROOT_DIR = Path(r"/share/home/tm1078571822880000/a904903640/group7")
+PROCESSED_DATA_DIR = ROOT_DIR / "AR_Data_process3.0" / "data"
 MODEL_OUTPUT_DIR = Path(
     os.getenv(
         "SMART_AR_MODEL_OUTPUT_DIR",
@@ -62,7 +62,7 @@ STRONG_GESTURE_DIR = PROCESSED_DATA_DIR / "strong_gesture_features"
 AUDIO_FEAT_DIR = PROCESSED_DATA_DIR / "audio_features"
 TEXT_FEAT_DIR = PROCESSED_DATA_DIR / "text_features"
 IMU_FEAT_DIR = PROCESSED_DATA_DIR / "imu_features"
-LOCAL_VIT_PATH = ROOT_DIR / "鱼眼完整模型" / "vit-base-patch16-224"
+LOCAL_VIT_PATH = ROOT_DIR / "ViTModel"
 SCENE_DIRS = {
     "museum": ROOT_DIR / "鱼眼完整模型" / "museum",
     "office": ROOT_DIR / "鱼眼完整模型" / "office",
@@ -227,7 +227,9 @@ if missing_scene_assignments:
     raise RuntimeError(f"Missing scene assignments for videos: {missing_scene_assignments}")
 for scene_name, image_paths in SCENE_IMAGE_PATHS.items():
     if not image_paths:
-        raise RuntimeError(f"No scene images found under: {SCENE_DIRS[scene_name]}")
+        # 场景模态实际由 fisheye 视频按时间戳抽帧 + ViT 编码生成（见 real_scene_utils.load_real_scene_features），
+        # 这里的 museum/office 静态参考图为旧机制，运行时不参与训练，缺失时仅告警不再中断。
+        print(f"[warn] no scene images found under: {SCENE_DIRS[scene_name]} (静态参考图缺失，不影响真实场景抽帧)")
 
 
 # ============================================================

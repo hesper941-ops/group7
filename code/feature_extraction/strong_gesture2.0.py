@@ -11,12 +11,12 @@ from tqdm import tqdm
 from datetime import datetime, timedelta, timezone
 
 # ==================== 1. 路径与参数配置 ====================
-BASE_DIR = r"E:\smart AR\dataset"
-INPUT_DATA_DIR = r"E:\smart AR\AR_Data_Process3.0\data" 
-OUTPUT_DIR = r"E:\smart AR\AR_Data_Process3.0\data"
+BASE_DIR = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/fisheye"
+INPUT_DATA_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data"
+OUTPUT_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-CLIP_MODEL_PATH = r"E:\smart AR\AR_Data_Process3.0\models\clip_teacher_model"
+CLIP_MODEL_PATH = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/AR_Data_Process3.0/models/clip_teacher_model"
 
 # 序列采样配置
 SEQ_LEN = 10                 # 提取 10 帧

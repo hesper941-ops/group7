@@ -14,15 +14,15 @@ import torch
 from PIL import Image
 from transformers import ViTImageProcessor, ViTModel
 
-os.environ.setdefault("HF_HOME", r"E:\smart AR\.hf_cache")
-os.environ.setdefault("HF_HUB_CACHE", r"E:\smart AR\.hf_cache\hub")
-os.environ.setdefault("TRANSFORMERS_CACHE", r"E:\smart AR\.hf_cache\transformers")
+os.environ.setdefault("HF_HOME", r"/share/home/tm1078571822880000/a904903640/group7/.hf_cache")
+os.environ.setdefault("HF_HUB_CACHE", r"/share/home/tm1078571822880000/a904903640/group7/.hf_cache/hub")
+os.environ.setdefault("TRANSFORMERS_CACHE", r"/share/home/tm1078571822880000/a904903640/group7/.hf_cache/transformers")
 os.makedirs(os.environ["HF_HUB_CACHE"], exist_ok=True)
 os.makedirs(os.environ["TRANSFORMERS_CACHE"], exist_ok=True)
 
-ROOT_DIR = Path(r"E:\smart AR")
-DATASET_VIDEO_DIR = ROOT_DIR / "dataset"
-LOCAL_VIT_PATH = ROOT_DIR / "鱼眼完整模型" / "vit-base-patch16-224"
+ROOT_DIR = Path(r"/share/home/tm1078571822880000/a904903640/group7/")
+DATASET_VIDEO_DIR = Path(r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/fisheye")
+LOCAL_VIT_PATH = ROOT_DIR / "ViTModel"
 REAL_SCENE_CACHE_DIR = ROOT_DIR / "dataset" / "scene_cache_real_vit"
 SCENE_FEAT_DIM = 768
 

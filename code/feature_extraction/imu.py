@@ -10,14 +10,14 @@ from tqdm import tqdm
 # ============================
 # 1. 配置 (适配 3.0 架构)
 # ============================
-BASE_DIR = r"E:\smart AR\dataset"
-IMU_PATH = os.path.join(BASE_DIR, "imu.csv") 
+BASE_DIR = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset"
+IMU_PATH = os.path.join(BASE_DIR, "imu.csv")
 
 # 这里的路径存放 strong_gesture.py 生成的 metadata_...npy
-INPUT_META_DIR = r"E:\smart AR\AR_Data_Process3.0\data"
+INPUT_META_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data"
 
 # 这里的路径存放本脚本生成的 imu_features_...npy 和 .json
-OUTPUT_IMU_DIR = r"E:\smart AR\AR_Data_Process3.0\data\imu_features"
+OUTPUT_IMU_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data/imu_features"
 os.makedirs(OUTPUT_IMU_DIR, exist_ok=True)
 
 # 采样配置 (必须与 strong_gesture.py 严格一致)

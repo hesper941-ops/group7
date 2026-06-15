@@ -12,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 # ============================
 # 1. 路径配置
 # ============================
-VIDEO_DIR = r"D:\AR_dataset\dataset"
-SAVE_DIR = r"E:\AR_data_process3.0\data"
+VIDEO_DIR = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/HoloLens"
+SAVE_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 VIDEO_LABELS = {

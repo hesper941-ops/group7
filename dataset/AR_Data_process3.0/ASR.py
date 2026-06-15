@@ -12,14 +12,14 @@ from datetime import datetime, timezone
 # ============================
 # 1. 路径配置
 # ============================
-HOLOLENS_VIDEO_DIR = r"D:\AR_dataset\dataset"
+HOLOLENS_VIDEO_DIR = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/HoloLens"
 # 这里指向包含 metadata_strong_gesture_...npy 的目录
-DATA_DIR = r"E:\AR_data_process3.0\data"
+DATA_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data"
 
 TEXT_OUT_DIR = os.path.join(DATA_DIR, "text_features")
 os.makedirs(TEXT_OUT_DIR, exist_ok=True)
 
-LOCAL_SENTENCE_MODEL = r"E:\AR_data_process3.0\models\all-MiniLM-L6-v2"
+LOCAL_SENTENCE_MODEL = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/AR_Data_Process3.0/models/all-MiniLM-L6-v2"
 
 # ============================
 # 2. 核心参数

@@ -11,9 +11,9 @@ from tqdm import tqdm
 # 1. 配置 (适配 3.0 架构)
 # ============================
 # 基础路径
-BASE_DIR = r"D:\AR_dataset\dataset"  # 视频文件路径保持不变
-DATA_DIR = r"E:\AR_data_process3.0\data"  # metadata 文件所在目录
-SAVE_DATA_DIR = r"E:\AR_data_process3.0\data\audio_features"  # 输出目录
+BASE_DIR = r"/share/home/tm1078571822880000/a944494510/课程项目/dataset/HoloLens"  # 视频文件路径保持不变
+DATA_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data"  # metadata 文件所在目录
+SAVE_DATA_DIR = r"/share/home/tm1078571822880000/a904903640/group7/AR_Data_process3.0/data/audio_features"  # 输出目录
 os.makedirs(SAVE_DATA_DIR, exist_ok=True)
 
 # 采样配置 (与 strong_gesture.py 严格同步)
