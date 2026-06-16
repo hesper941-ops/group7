@@ -42,3 +42,5 @@ Thumbs.db
 
 ViTModel/
 whisper/
+Baseline_Model/
+scene_cache_real_vit/
