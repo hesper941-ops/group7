@@ -24,7 +24,7 @@ saves/
 
 # Data and model checkpoints
 data/
-#dataset/
+dataset/
 datasets/
 checkpoints/
 weights/
