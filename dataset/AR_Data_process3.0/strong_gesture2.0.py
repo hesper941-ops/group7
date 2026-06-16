@@ -230,7 +230,10 @@ if __name__ == "__main__":
                 "video_names": np.array([mp4_name] * len(valid_lbs)), # (N,)
                 "approx_timestamps": valid_tss     # (N,) Center UTC
             }
-            np.save(os.path.join(OUTPUT_DIR, f"strong_gesture_features_{mp4_base}.npy"), final_npy)
+            # 保存手势特征到子目录 strong_gesture_features/（与训练读取路径一致；metadata/debug 仍留在 OUTPUT_DIR 供 imu.py 读取）
+            gesture_feat_dir = os.path.join(OUTPUT_DIR, "strong_gesture_features")
+            os.makedirs(gesture_feat_dir, exist_ok=True)
+            np.save(os.path.join(gesture_feat_dir, f"strong_gesture_features_{mp4_base}.npy"), final_npy)
 
             # 2. 保存 Metadata (格式与特征文件一致，仅去掉 features)
             meta_npy = {k: v for k, v in final_npy.items() if k != "features"}
