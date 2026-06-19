@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -76,25 +77,43 @@ def save_predictions(
             )
 
 
+def apply_checkpoint_model_config(config, checkpoint: dict):
+    model_config = checkpoint.get("model_config")
+    if not model_config:
+        print("[warn] checkpoint has no model_config; falling back to command-line/default model parameters")
+        return config
+    return replace(
+        config,
+        model=model_config.get("model", config.model),
+        model_dim=int(model_config.get("model_dim", config.model_dim)),
+        num_latents=int(model_config.get("num_latents", config.num_latents)),
+        depth=int(model_config.get("depth", config.depth)),
+        num_heads=int(model_config.get("num_heads", config.num_heads)),
+        dropout=float(model_config.get("dropout", config.dropout)),
+    )
+
+
 def test(config, checkpoint_path: Path) -> Path:
     run_dir = checkpoint_path.parent
     output_dir = ensure_dir(run_dir / "test")
     scalers = load_pickle(run_dir / "scalers.pkl")
     label_encoder = load_pickle(run_dir / "label_encoder.pkl")
-
-    print("[step] build test dataset from raw data paths")
-    test_dataset = E2EMultimodalDataset(config, "test")
-    features_raw, _intent_labels, scene_labels, joint_labels_raw = dataset_to_arrays(test_dataset)
-    print(f"[split] test videos -> {describe_samples(test_dataset.samples)}")
-    features = apply_scalers(features_raw, scalers)
-    y_test = label_encoder.transform(joint_labels_raw)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_model(config, len(label_encoder.classes_)).to(device)
     try:
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     except TypeError:
         checkpoint = torch.load(checkpoint_path, map_location=device)
+    config = apply_checkpoint_model_config(config, checkpoint)
+
+    print("[step] build test dataset from raw data paths")
+    test_dataset = E2EMultimodalDataset(config, "test")
+    features_raw, _intent_labels, scene_labels, joint_labels_raw = dataset_to_arrays(test_dataset)
+    print("test users: C")
+    print(f"[split] test videos -> {describe_samples(test_dataset.samples)}")
+    features = apply_scalers(features_raw, scalers)
+    y_test = label_encoder.transform(joint_labels_raw)
+
+    model = build_model(config, len(label_encoder.classes_)).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
     loader = make_loader(features, y_test, scene_labels, config.batch_size, False)

@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.utils.class_weight import compute_class_weight
+from torch.utils.data import DataLoader, Dataset
 
 from e2e_config import ALL_JOINT_CLASS_NAMES, E2EConfig, build_config, MODALITY_KEYS, FEATURE_DIMS
 from e2e_dataset import E2EMultimodalDataset, dataset_to_arrays, describe_samples
@@ -47,9 +49,47 @@ def apply_scalers(features: dict, scalers: dict) -> dict:
 
 
 def make_loader(features: dict, labels: np.ndarray, scene_labels: np.ndarray, batch_size: int, shuffle: bool):
-    import baseline_real_scene as base
+    return DataLoader(
+        MultimodalSceneDataset(features, labels, scene_labels),
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=0,
+        pin_memory=torch.cuda.is_available(),
+    )
 
-    return base.make_loader(features, labels, scene_labels, batch_size, shuffle)
+
+class MultimodalSceneDataset(Dataset):
+    def __init__(self, features: dict, labels: np.ndarray, scene_labels: np.ndarray):
+        self.imu = torch.from_numpy(features["imu"].astype(np.float32))
+        self.gesture = torch.from_numpy(features["gesture"].astype(np.float32))
+        self.audio = torch.from_numpy(features["audio"].astype(np.float32))
+        self.text = torch.from_numpy(features["text"].astype(np.float32))
+        self.scene = torch.from_numpy(features["scene"].astype(np.float32))
+        self.labels = torch.from_numpy(labels.astype(np.int64))
+        self.scene_labels = torch.from_numpy(scene_labels.astype(np.int64))
+
+    def __len__(self) -> int:
+        return len(self.labels)
+
+    def __getitem__(self, index: int):
+        return (
+            self.imu[index],
+            self.gesture[index],
+            self.audio[index],
+            self.text[index],
+            self.scene[index],
+            self.labels[index],
+            self.scene_labels[index],
+        )
+
+
+def build_class_weights(labels: np.ndarray, num_classes: int, device: torch.device) -> torch.Tensor:
+    weights = np.ones(num_classes, dtype=np.float32)
+    unique_labels = np.unique(labels)
+    class_weights = compute_class_weight(class_weight="balanced", classes=unique_labels, y=labels)
+    for label_value, weight in zip(unique_labels, class_weights):
+        weights[int(label_value)] = float(weight)
+    return torch.tensor(weights, dtype=torch.float32, device=device)
 
 
 def train_one_epoch(model, loader, criterion, optimizer, device: torch.device) -> tuple[float, float]:
@@ -144,6 +184,7 @@ def train(config: E2EConfig) -> Path:
     print("[step] build train dataset from raw data paths")
     full_dataset = E2EMultimodalDataset(config, "train")
     features, intent_labels, scene_labels, joint_labels = dataset_to_arrays(full_dataset)
+    print("train users: A, B")
     print(f"[split] train videos -> {describe_samples(full_dataset.samples)}")
 
     (
@@ -163,13 +204,11 @@ def train(config: E2EConfig) -> Path:
     y_train, label_encoder = encode_joint_labels(y_train_joint_raw)
     y_val = label_encoder.transform(y_val_joint_raw)
 
-    import baseline_real_scene as base
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader = make_loader(train_features, y_train, y_train_scene, config.batch_size, True)
     val_loader = make_loader(val_features, y_val, y_val_scene, config.batch_size, False)
     model = build_model(config, len(label_encoder.classes_)).to(device)
-    criterion = nn.CrossEntropyLoss(weight=base.build_class_weights(y_train, len(label_encoder.classes_)).to(device))
+    criterion = nn.CrossEntropyLoss(weight=build_class_weights(y_train, len(label_encoder.classes_), device))
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
 
     best_val_acc = -1.0

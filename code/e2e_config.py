@@ -86,6 +86,46 @@ TEST_VIDEO_NAMES = [
 ]
 TRAIN_VIDEO_NAMES = [name for name in VIDEO_LABELS if name not in TEST_VIDEO_NAMES]
 
+# User mapping from README:
+#   A = Luo, B = Gu, C = Bian
+# The required split is users A+B for training and user C for testing.
+LUO_VIDEO_NAMES = {
+    "interaction_20260131_120024.mp4",
+    "interaction_20260227_132951.mp4",
+    "interaction_20260227_133408.mp4",
+    "interaction_20260131_114156.mp4",
+    "interaction_20260131_115150.mp4",
+    "interaction_20260131_114852.mp4",
+    "interaction_20260131_071552.mp4",
+    "interaction_20260131_072412.mp4",
+    "interaction_20260131_084300.mp4",
+    "interaction_20260131_084732.mp4",
+    "interaction_20260131_085207.mp4",
+    "interaction_20260131_085611.mp4",
+    "interaction_20260131_090139.mp4",
+}
+GU_VIDEO_NAMES = {
+    "interaction_20260301_073041.mp4",
+    "interaction_20260301_064753.mp4",
+    "interaction_20260306_072721.mp4",
+    "interaction_20260301_071948.mp4",
+    "interaction_20260131_121548.mp4",
+    "interaction_20260301_073435.mp4",
+    "interaction_20260301_072503.mp4",
+    "interaction_20260131_065459.mp4",
+    "interaction_20260131_070722.mp4",
+    "interaction_20260131_090541.mp4",
+    "interaction_20260131_090917.mp4",
+    "interaction_20260131_091249.mp4",
+    "interaction_20260131_091657.mp4",
+}
+BIAN_VIDEO_NAMES = set(TEST_VIDEO_NAMES)
+USER_BY_VIDEO = {name: "A" for name in LUO_VIDEO_NAMES}
+USER_BY_VIDEO.update({name: "B" for name in GU_VIDEO_NAMES})
+USER_BY_VIDEO.update({name: "C" for name in BIAN_VIDEO_NAMES})
+TRAIN_USERS = ("A", "B")
+TEST_USERS = ("C",)
+
 OFFICE_VIDEO_NAMES = {
     "interaction_20260306_072344.mp4",
     "interaction_20260227_122606.mp4",
@@ -109,6 +149,47 @@ OFFICE_VIDEO_NAMES = {
 }
 SCENE_BY_VIDEO = {name: "office" for name in OFFICE_VIDEO_NAMES}
 SCENE_BY_VIDEO.update({name: "museum" for name in set(VIDEO_LABELS) - OFFICE_VIDEO_NAMES})
+FISHEYE_AVI_BY_VIDEO = {
+    "interaction_20260306_072344.mp4": "Video_20260306_152340690.avi",
+    "interaction_20260227_122606.mp4": "Video_20260227_202553335.avi",
+    "interaction_20260227_122952.mp4": "Video_20260227_202953348.avi",
+    "interaction_20260227_123354.mp4": "Video_20260227_203348219.avi",
+    "interaction_20260227_124559.mp4": "Video_20260227_204553897.avi",
+    "interaction_20260227_123745.mp4": "Video_20260227_203753817.avi",
+    "interaction_20260131_120024.mp4": "Video_20260131_200029359.avi",
+    "interaction_20260227_132951.mp4": "Video_20260227_213001434.avi",
+    "interaction_20260227_133408.mp4": "Video_20260227_213404452.avi",
+    "interaction_20260131_114156.mp4": "Video_20260131_194205407.avi",
+    "interaction_20260131_115150.mp4": "Video_20260131_195202906.avi",
+    "interaction_20260131_114852.mp4": "Video_20260131_194854095.avi",
+    "interaction_20260301_073041.mp4": "Video_20260301_153037623.avi",
+    "interaction_20260301_064753.mp4": "Video_20260301_144803454.avi",
+    "interaction_20260306_072721.mp4": "Video_20260306_152721366.avi",
+    "interaction_20260301_071948.mp4": "Video_20260301_151942635.avi",
+    "interaction_20260131_121548.mp4": "Video_20260131_201556629.avi",
+    "interaction_20260301_073435.mp4": "Video_20260301_153434856.avi",
+    "interaction_20260301_072503.mp4": "Video_20260301_152459131.avi",
+    "interaction_20260131_071552.mp4": "Video_20260131_151559270.avi",
+    "interaction_20260131_072412.mp4": "Video_20260131_152410916.avi",
+    "interaction_20260131_084300.mp4": "Video_20260131_164304016.avi",
+    "interaction_20260131_084732.mp4": "Video_20260131_164745532.avi",
+    "interaction_20260131_085207.mp4": "Video_20260131_165208524.avi",
+    "interaction_20260131_085611.mp4": "Video_20260131_165614756.avi",
+    "interaction_20260131_090139.mp4": "Video_20260131_170142792.avi",
+    "interaction_20260131_065459.mp4": "Video_20260131_145524524.avi",
+    "interaction_20260131_070722.mp4": "Video_20260131_150734369.avi",
+    "interaction_20260131_090541.mp4": "Video_20260131_170539636.avi",
+    "interaction_20260131_090917.mp4": "Video_20260131_170919896.avi",
+    "interaction_20260131_091249.mp4": "Video_20260131_171253889.avi",
+    "interaction_20260131_091657.mp4": "Video_20260131_171648040.avi",
+    "interaction_20260306_082346.mp4": "Video_20260306_162401599.avi",
+    "interaction_20260306_083107.mp4": "Video_20260306_163105571.avi",
+    "interaction_20260306_083434.mp4": "Video_20260306_163434878.avi",
+    "interaction_20260306_084406.mp4": "Video_20260306_164407883.avi",
+    "interaction_20260306_084853.mp4": "Video_20260306_164902044.avi",
+    "interaction_20260306_085830.mp4": "Video_20260306_165839689.avi",
+    "interaction_20260306_090441.mp4": "Video_20260306_170449073.avi",
+}
 ALL_JOINT_CLASS_NAMES = [
     f"{scene}_{INTENT_NAMES[intent]}"
     for scene in ("office", "museum")
@@ -137,29 +218,74 @@ class E2EConfig:
     dropout: float = 0.1
 
     @property
+    def ar_data_process_dir(self) -> Path:
+        if self.data_root.name.lower() == "data" and self.data_root.parent.name.lower() in {
+            "ar_data_process3.0",
+            "ar_data_process3.0",
+        }:
+            return self.data_root.parent
+        if self.data_root.name.lower() in {"ar_data_process3.0", "ar_data_process3.0"}:
+            return self.data_root
+        candidate = self.data_root / "AR_Data_process3.0"
+        if candidate.exists():
+            return candidate
+        candidate = self.data_root / "AR_Data_Process3.0"
+        if candidate.exists():
+            return candidate
+        return self.data_root / "AR_Data_process3.0"
+
+    @property
     def processed_data_dir(self) -> Path:
-        direct = self.data_root / "data"
-        return direct if direct.exists() else self.data_root
+        if self.data_root.name.lower() == "data":
+            return self.data_root
+        return self.ar_data_process_dir / "data"
+
+    @property
+    def dataset_root(self) -> Path:
+        if self.data_root.name.lower() == "data":
+            return self.data_root.parent.parent
+        if self.data_root.name.lower() in {"ar_data_process3.0", "ar_data_process3.0"}:
+            return self.data_root.parent
+        if (self.data_root / "HoloLens").exists() or (self.data_root / "fisheye").exists():
+            return self.data_root
+        return self.ar_data_process_dir.parent
 
     @property
     def hololens_dir(self) -> Path:
-        return self.data_root.parent / "HoloLens"
+        return self.dataset_root / "HoloLens"
 
     @property
     def fisheye_dir(self) -> Path:
-        return self.data_root.parent / "fisheye"
+        return self.dataset_root / "fisheye"
 
     @property
     def imu_csv_path(self) -> Path:
-        return self.data_root.parent / "imu.csv"
+        return self.dataset_root / "imu.csv"
 
     @property
     def clip_model_path(self) -> Path:
-        return self.data_root / "models" / "clip_teacher_model"
+        return self.ar_data_process_dir / "models" / "clip_teacher_model"
 
     @property
     def sentence_model_path(self) -> Path:
-        return self.data_root / "models" / "all-MiniLM-L6-v2"
+        return self.ar_data_process_dir / "models" / "all-MiniLM-L6-v2"
+
+    @property
+    def whisper_cache_dir(self) -> Path:
+        return self.cache_dir / "whisper"
+
+    def describe_data_layout(self) -> Dict[str, str]:
+        return {
+            "data_root": str(self.data_root),
+            "dataset_root": str(self.dataset_root),
+            "ar_data_process_dir": str(self.ar_data_process_dir),
+            "processed_data_dir": str(self.processed_data_dir),
+            "hololens_dir": str(self.hololens_dir),
+            "fisheye_dir": str(self.fisheye_dir),
+            "imu_csv_path": str(self.imu_csv_path),
+            "clip_model_path": str(self.clip_model_path),
+            "sentence_model_path": str(self.sentence_model_path),
+        }
 
 
 def default_project_root() -> Path:

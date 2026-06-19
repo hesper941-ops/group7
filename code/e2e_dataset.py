@@ -11,7 +11,10 @@ from e2e_config import (
     SCENE_BY_VIDEO,
     SCENE_NAME_TO_ID,
     TEST_VIDEO_NAMES,
+    TEST_USERS,
     TRAIN_VIDEO_NAMES,
+    TRAIN_USERS,
+    USER_BY_VIDEO,
     VIDEO_LABELS,
     E2EConfig,
 )
@@ -23,6 +26,7 @@ class E2ESample:
     sample_id: str
     video_name: str
     scene: str
+    user: str
     segment_index: int
     raw_paths: Dict[str, str]
     intent_label: int
@@ -42,6 +46,14 @@ def get_split_video_names(split: str) -> List[str]:
     raise ValueError(f"Unknown split: {split}")
 
 
+def get_split_users(split: str) -> tuple[str, ...]:
+    if split in {"train", "val"}:
+        return TRAIN_USERS
+    if split == "test":
+        return TEST_USERS
+    raise ValueError(f"Unknown split: {split}")
+
+
 def build_video_samples(config: E2EConfig, split: str, pipeline: E2EFeaturePipeline) -> List[E2ESample]:
     samples: List[E2ESample] = []
     for video_name in get_split_video_names(split):
@@ -55,6 +67,12 @@ def build_video_samples(config: E2EConfig, split: str, pipeline: E2EFeaturePipel
             if value is not None
         }
         scene = SCENE_BY_VIDEO[video_name]
+        user = USER_BY_VIDEO[video_name]
+        if user not in get_split_users(split):
+            raise RuntimeError(
+                f"Split/user mismatch: split={split} video={video_name} user={user} "
+                f"allowed_users={get_split_users(split)}"
+            )
         for index, timestamp in enumerate(timestamps.tolist()):
             intent_label = int(labels[index]) if index < len(labels) else int(VIDEO_LABELS[video_name])
             samples.append(
@@ -62,6 +80,7 @@ def build_video_samples(config: E2EConfig, split: str, pipeline: E2EFeaturePipel
                     sample_id=sample_cache_key(video_name, index, timestamp),
                     video_name=video_name,
                     scene=scene,
+                    user=user,
                     segment_index=index,
                     raw_paths=raw_paths,
                     intent_label=intent_label,
@@ -90,6 +109,7 @@ class E2EMultimodalDataset(Dataset):
             "sample_id": sample.sample_id,
             "video_name": sample.video_name,
             "scene": sample.scene,
+            "user": sample.user,
             "segment_index": sample.segment_index,
             "raw_paths": sample.raw_paths,
             "joint_label": sample.joint_label,
@@ -123,4 +143,11 @@ def describe_samples(samples: Iterable[E2ESample]) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for sample in samples:
         counts[sample.joint_label] = counts.get(sample.joint_label, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def describe_users(samples: Iterable[E2ESample]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for sample in samples:
+        counts[sample.user] = counts.get(sample.user, 0) + 1
     return dict(sorted(counts.items()))
