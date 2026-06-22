@@ -210,21 +210,12 @@ class E2EConfig:
     weight_decay: float = 1e-4
     seed: int = 42
     val_split: float = 0.2
-    patience: int = 4
+    patience: int = 10
     model_dim: int = 128
     num_latents: int = 32
     depth: int = 2
     num_heads: int = 4
     dropout: float = 0.1
-    intent_aux_weight: float = 0.35
-    scene_aux_weight: float = 0.15
-    gesture_intent_aux_weight: float = 0.25
-    base_intent_aux_weight: float = 0.10
-    selection_intent_weight: float = 0.35
-    selection_scene_weight: float = 0.05
-    label_smoothing: float = 0.03
-    grad_clip_norm: float = 1.0
-    no_early_stop: bool = False
 
     @property
     def ar_data_process_dir(self) -> Path:
@@ -317,8 +308,6 @@ def build_config(
     learning_rate: float = 1e-3,
     weight_decay: float = 1e-4,
     seed: int = 42,
-    patience: int = 4,
-    no_early_stop: bool = False,
 ) -> E2EConfig:
     project_root = resolve_path(None, "SMART_AR_ROOT", default_project_root())
     default_data = project_root / "dataset" / "AR_Data_process3.0"
@@ -335,6 +324,4 @@ def build_config(
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         seed=seed,
-        patience=patience,
-        no_early_stop=no_early_stop,
     )

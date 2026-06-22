@@ -50,21 +50,6 @@ def compute_accuracy(y_true: Iterable[Any], y_pred: Iterable[Any]) -> float:
     return float(np.mean(true_arr == pred_arr))
 
 
-def split_joint_label(label_name: str) -> tuple[str, str]:
-    scene_name, intent_name = str(label_name).split("_", 1)
-    return scene_name, intent_name
-
-
-def compute_selection_score(
-    joint_acc: float,
-    intent_acc: float,
-    scene_acc: float,
-    intent_weight: float = 0.35,
-    scene_weight: float = 0.05,
-) -> float:
-    return float(joint_acc + intent_weight * intent_acc + scene_weight * scene_acc)
-
-
 def write_csv_row(path: Path, row: Dict[str, Any], fieldnames: list[str]) -> None:
     ensure_dir(path.parent)
     exists = path.exists()

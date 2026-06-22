@@ -43,14 +43,12 @@ def save_predictions(
     dataset: E2EMultimodalDataset,
     true_joint: np.ndarray,
     pred_joint: np.ndarray,
-    pred_intent_head: np.ndarray | None = None,
-    pred_scene_head: np.ndarray | None = None,
 ) -> None:
     ensure_dir(path.parent)
     with path.open("w", newline="", encoding="utf-8") as file:
         fieldnames = [
             "sample_id",
-            "video_file",
+            "video_name",
             "scene",
             "true_joint",
             "pred_joint",
@@ -58,22 +56,16 @@ def save_predictions(
             "pred_intent",
             "true_scene",
             "pred_scene",
-            "pred_intent_from_joint",
-            "pred_intent_from_head",
-            "pred_scene_from_joint",
-            "pred_scene_from_head",
         ]
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        for index, (sample, true_label, pred_label) in enumerate(zip(dataset.samples, true_joint.tolist(), pred_joint.tolist())):
+        for sample, true_label, pred_label in zip(dataset.samples, true_joint.tolist(), pred_joint.tolist()):
             true_scene, true_intent = str(true_label).split("_", 1)
             pred_scene, pred_intent = str(pred_label).split("_", 1)
-            head_intent = pred_intent_head[index] if pred_intent_head is not None else ""
-            head_scene = pred_scene_head[index] if pred_scene_head is not None else ""
             writer.writerow(
                 {
                     "sample_id": sample.sample_id,
-                    "video_file": sample.video_name,
+                    "video_name": sample.video_name,
                     "scene": sample.scene,
                     "true_joint": true_label,
                     "pred_joint": pred_label,
@@ -81,10 +73,6 @@ def save_predictions(
                     "pred_intent": pred_intent,
                     "true_scene": true_scene,
                     "pred_scene": pred_scene,
-                    "pred_intent_from_joint": pred_intent,
-                    "pred_intent_from_head": head_intent,
-                    "pred_scene_from_joint": pred_scene,
-                    "pred_scene_from_head": head_scene,
                 }
             )
 
@@ -119,42 +107,27 @@ def test(config, checkpoint_path: Path) -> Path:
 
     print("[step] build test dataset from raw data paths")
     test_dataset = E2EMultimodalDataset(config, "test")
-    features_raw, intent_labels, scene_labels, joint_labels_raw = dataset_to_arrays(test_dataset)
+    features_raw, _intent_labels, scene_labels, joint_labels_raw = dataset_to_arrays(test_dataset)
     print("test users: C")
     print(f"[split] test videos -> {describe_samples(test_dataset.samples)}")
     features = apply_scalers(features_raw, scalers)
     y_test = label_encoder.transform(joint_labels_raw)
 
-    intent_names = [INTENT_NAMES[index] for index in sorted(INTENT_NAMES)]
-    scene_names = [SCENE_ID_TO_NAME[index] for index in sorted(SCENE_ID_TO_NAME)]
-    joint_names = label_encoder.classes_.tolist()
-    model = build_model(
-        config,
-        len(label_encoder.classes_),
-        num_intent_classes=len(intent_names),
-        num_scene_classes=len(scene_names),
-        joint_class_names=joint_names,
-    ).to(device)
+    model = build_model(config, len(label_encoder.classes_)).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    loader = make_loader(features, y_test, intent_labels, scene_labels, config.batch_size, False)
-    criteria = {
-        "joint": nn.CrossEntropyLoss(),
-        "intent": nn.CrossEntropyLoss(),
-        "scene": nn.CrossEntropyLoss(),
-    }
-    test_metrics = evaluate(model, loader, criteria, device, config)
-    test_loss = test_metrics["loss"]
-    joint_acc = test_metrics["joint_acc"]
-    y_true = test_metrics["joint_true"]
-    y_pred = test_metrics["joint_pred"]
+    loader = make_loader(features, y_test, scene_labels, config.batch_size, False)
+    criterion = nn.CrossEntropyLoss()
+    test_loss, joint_acc, y_true, y_pred = evaluate(model, loader, criterion, device)
 
     true_joint = label_encoder.inverse_transform(y_true)
     pred_joint = label_encoder.inverse_transform(y_pred)
     true_scene, true_intent = split_joint_names(true_joint)
     pred_scene, pred_intent = split_joint_names(pred_joint)
-    pred_intent_head = np.array([intent_names[index] for index in test_metrics["intent_pred"]], dtype=object)
-    pred_scene_head = np.array([scene_names[index] for index in test_metrics["scene_pred"]], dtype=object)
+
+    intent_names = [INTENT_NAMES[index] for index in sorted(INTENT_NAMES)]
+    scene_names = [SCENE_ID_TO_NAME[index] for index in sorted(SCENE_ID_TO_NAME)]
+    joint_names = label_encoder.classes_.tolist()
 
     joint_report = classification_report(
         true_joint,
@@ -196,8 +169,6 @@ def test(config, checkpoint_path: Path) -> Path:
         "joint_accuracy": float(joint_acc),
         "intent_accuracy": compute_accuracy(true_intent, pred_intent),
         "scene_accuracy": compute_accuracy(true_scene, pred_scene),
-        "intent_accuracy_from_head": compute_accuracy(true_intent, pred_intent_head),
-        "scene_accuracy_from_head": compute_accuracy(true_scene, pred_scene_head),
         "classification_report": joint_report,
         "intent_classification_report": intent_report,
         "scene_classification_report": scene_report,
@@ -209,7 +180,7 @@ def test(config, checkpoint_path: Path) -> Path:
         "scene_class_names": scene_names,
     }
     save_json(make_jsonable(metrics), output_dir / "test_metrics.json")
-    save_predictions(output_dir / "test_predictions.csv", test_dataset, true_joint, pred_joint, pred_intent_head, pred_scene_head)
+    save_predictions(output_dir / "test_predictions.csv", test_dataset, true_joint, pred_joint)
     print(f"[saved] {output_dir}")
     return output_dir
 
