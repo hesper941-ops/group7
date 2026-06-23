@@ -70,6 +70,7 @@ class E2EFeaturePipeline:
         ensure_dir(config.cache_dir)
         self._video_cache: Dict[str, Dict[str, np.ndarray]] = {}
         self._meta_cache: Dict[str, Dict[str, np.ndarray]] = {}
+        self._scene_records: Dict[str, Dict[str, object]] = {}
         self._scene_cache = None
 
     def extract_sample_features(self, sample: dict) -> dict:
@@ -86,6 +87,7 @@ class E2EFeaturePipeline:
             path = cache_dir / f"{key}.npy"
             print(f"[cache] writing {key} feature for {sample_id}: {path}")
             np.save(path, value)
+        self._write_sample_source(cache_dir, sample, features)
         return features
 
     def extract_video_features(self, video_name: str) -> Dict[str, np.ndarray]:
@@ -406,6 +408,31 @@ class E2EFeaturePipeline:
             json.dump(debug_log, file, indent=2)
         return paths["gesture"]
 
+    def _write_sample_source(self, cache_dir: Path, sample: dict, features: Dict[str, np.ndarray]) -> None:
+        video_name = str(sample["video_name"])
+        segment_index = int(sample["segment_index"])
+        scene_record = self._scene_records.get(video_name, {})
+        sample_records = scene_record.get("sample_records", [])
+        sample_scene_record = sample_records[segment_index] if segment_index < len(sample_records) else {}
+        timestamps = self._meta_cache.get(video_name, {}).get("approx_timestamps", [])
+        timestamp_value = timestamps[segment_index] if segment_index < len(timestamps) else sample.get("timestamp", "")
+        scene_feature = np.asarray(features["scene"])
+        source_payload = {
+            "scene_source": sample_scene_record.get("scene_source", scene_record.get("scene_source", "unknown")),
+            "scene_nonzero": int(np.count_nonzero(scene_feature)),
+            "scene_failed_count": int(scene_record.get("failed_scene_frames", 0)),
+            "scene_cache_dir": str(self.config.cache_dir / "real_scene_vit"),
+            "legacy_scene_cache_dir": str(self.config.legacy_scene_cache_dir),
+            "fisheye_dir": str(self.config.fisheye_dir),
+            "video_name": video_name,
+            "timestamp": str(timestamp_value),
+            "scene_cache_path": sample_scene_record.get("scene_cache_path"),
+            "legacy_scene_cache_path": sample_scene_record.get("legacy_scene_cache_path"),
+            "avi_path": scene_record.get("avi_path"),
+        }
+        with (cache_dir / "source.json").open("w", encoding="utf-8") as file:
+            json.dump(source_payload, file, indent=2, ensure_ascii=False)
+
     def missing_raw_paths(self, video_name: str) -> Dict[str, Path]:
         raw_paths = self.resolve_raw_paths(video_name)
         return {key: path for key, path in raw_paths.items() if path is not None and not path.exists()}
@@ -630,14 +657,33 @@ class E2EFeaturePipeline:
         except Exception as exc:
             raise FeatureExtractionError(f"Cannot import real_scene_utils for scene extraction: {exc}") from exc
 
+        writable_scene_cache_dir = self.config.cache_dir / "real_scene_vit"
+        legacy_scene_cache_dir = self.config.legacy_scene_cache_dir
         scene_utils.DATASET_VIDEO_DIR = self.config.fisheye_dir
-        scene_utils.REAL_SCENE_CACHE_DIR = self.config.cache_dir / "real_scene_vit"
+        scene_utils.REAL_SCENE_CACHE_DIR = writable_scene_cache_dir
+        if hasattr(scene_utils, "LEGACY_REAL_SCENE_CACHE_DIR"):
+            scene_utils.LEGACY_REAL_SCENE_CACHE_DIR = legacy_scene_cache_dir
         if (self.config.project_root / "ViTModel").exists():
             scene_utils.LOCAL_VIT_PATH = self.config.project_root / "ViTModel"
         if self._scene_cache is None:
-            self._scene_cache = scene_utils.RealSceneFeatureCache(scene_utils.REAL_SCENE_CACHE_DIR)
-        print(f"[extract] building scene feature for {video_name}")
-        scene_features, _ = scene_utils.load_real_scene_features(video_name, timestamps, self._scene_cache)
+            self._scene_cache = scene_utils.RealSceneFeatureCache(writable_scene_cache_dir, legacy_scene_cache_dir)
+        print(
+            f"[extract] building scene feature for {video_name} "
+            f"writable_cache={writable_scene_cache_dir} legacy_cache={legacy_scene_cache_dir}"
+        )
+        scene_features, record = scene_utils.load_real_scene_features(video_name, timestamps, self._scene_cache)
+        record["fisheye_dir"] = str(self.config.fisheye_dir)
+        record["scene_cache_dir"] = str(writable_scene_cache_dir)
+        record["legacy_scene_cache_dir"] = str(legacy_scene_cache_dir)
+        self._scene_records[video_name] = record
+        source_counts = record.get("scene_source_counts", {})
+        failed_count = int(record.get("failed_scene_frames", 0))
+        print(f"[scene-source] video_name={video_name} sources={source_counts} failed_scene_frames={failed_count}")
+        if scene_features.size and not np.any(scene_features):
+            print(
+                f"[scene-zero] all scene features are zero video_name={video_name}, "
+                f"fisheye_dir={self.config.fisheye_dir}, legacy_scene_cache_dir={legacy_scene_cache_dir}"
+            )
         return scene_features.astype(np.float32)
 
     def _resolve_fisheye_path(self, video_name: str) -> Path | None:

@@ -273,7 +273,15 @@ class E2EConfig:
 
     @property
     def fisheye_dir(self) -> Path:
-        return self.dataset_root / "fisheye"
+        override = os.getenv("SMART_AR_FISHEYE_DIR") or os.getenv("REAL_SCENE_VIDEO_DIR")
+        return Path(override).expanduser().resolve() if override else self.dataset_root / "fisheye"
+
+    @property
+    def legacy_scene_cache_dir(self) -> Path:
+        override = os.getenv("SMART_AR_LEGACY_SCENE_CACHE_DIR")
+        if override:
+            return Path(override).expanduser().resolve()
+        return Path("/share/home/tm1078571822880000/a904903640/group7/dataset/scene_cache_real_vit")
 
     @property
     def imu_csv_path(self) -> Path:
@@ -299,6 +307,7 @@ class E2EConfig:
             "processed_data_dir": str(self.processed_data_dir),
             "hololens_dir": str(self.hololens_dir),
             "fisheye_dir": str(self.fisheye_dir),
+            "legacy_scene_cache_dir": str(self.legacy_scene_cache_dir),
             "imu_csv_path": str(self.imu_csv_path),
             "clip_model_path": str(self.clip_model_path),
             "sentence_model_path": str(self.sentence_model_path),

@@ -26,6 +26,30 @@ LOCAL_VIT_PATH = ROOT_DIR / "ViTModel"
 REAL_SCENE_CACHE_DIR = ROOT_DIR / "dataset" / "scene_cache_real_vit"
 SCENE_FEAT_DIM = 768
 
+
+def _env_path(*names: str, default: Path) -> Path:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return Path(value).expanduser().resolve()
+    return default
+
+
+DATASET_VIDEO_DIR = _env_path(
+    "SMART_AR_FISHEYE_DIR",
+    "REAL_SCENE_VIDEO_DIR",
+    default=Path("/share/home/tm1078571822880000/a944494510/课程项目/dataset/fisheye"),
+)
+REAL_SCENE_CACHE_DIR = _env_path(
+    "SMART_AR_REAL_SCENE_CACHE_DIR",
+    "REAL_SCENE_CACHE_DIR",
+    default=ROOT_DIR / "dataset" / "scene_cache_real_vit",
+)
+LEGACY_REAL_SCENE_CACHE_DIR = _env_path(
+    "SMART_AR_LEGACY_SCENE_CACHE_DIR",
+    default=ROOT_DIR / "dataset" / "scene_cache_real_vit",
+)
+
 AVI_TO_MP4_MAP = {
     "Video_20260306_152340690.avi": "interaction_20260306_072344.mp4",
     "Video_20260227_202553335.avi": "interaction_20260227_122606.mp4",
@@ -114,22 +138,26 @@ def read_real_scene_frame(video_name: str, timestamp_value: str) -> Optional[Ima
         utc_target = parse_utc_timestamp(timestamp_value)
         avi_utc_start = avi_start_utc_from_name(avi_path.name)
         offset_ms = (utc_target - avi_utc_start).total_seconds() * 1000.0
-    except Exception:
+    except Exception as exc:
+        print(f"[scene-miss] cannot resolve scene timestamp video_name={video_name}, timestamp={timestamp_value}, error={exc}")
         return None
 
     cap = cv2.VideoCapture(str(avi_path))
     if not cap.isOpened():
+        print(f"[scene-miss] cannot open video_name={video_name}, timestamp={timestamp_value}, avi_path={avi_path}")
         return None
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if fps <= 0 or frame_count <= 0:
         cap.release()
+        print(f"[scene-miss] invalid video metadata video_name={video_name}, timestamp={timestamp_value}, avi_path={avi_path}, fps={fps}, frames={frame_count}")
         return None
 
     duration_ms = frame_count / fps * 1000.0
     if offset_ms < 0 or offset_ms > duration_ms:
         cap.release()
+        print(f"[scene-miss] timestamp out of range video_name={video_name}, timestamp={timestamp_value}, avi_path={avi_path}, offset_ms={offset_ms:.2f}, duration_ms={duration_ms:.2f}")
         return None
 
     frame_index = int(round(offset_ms * fps / 1000.0))
@@ -138,6 +166,7 @@ def read_real_scene_frame(video_name: str, timestamp_value: str) -> Optional[Ima
     ok, frame = cap.read()
     cap.release()
     if not ok or frame is None:
+        print(f"[scene-miss] cannot read frame video_name={video_name}, timestamp={timestamp_value}, avi_path={avi_path}, frame_index={frame_index}")
         return None
 
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -145,34 +174,104 @@ def read_real_scene_frame(video_name: str, timestamp_value: str) -> Optional[Ima
 
 
 class RealSceneFeatureCache:
-    def __init__(self, cache_dir: Path = REAL_SCENE_CACHE_DIR):
-        self.cache_dir = cache_dir
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, cache_dir: Path = REAL_SCENE_CACHE_DIR, legacy_cache_dir: Optional[Path] = LEGACY_REAL_SCENE_CACHE_DIR):
+        self.cache_dir = Path(cache_dir)
+        self.legacy_cache_dir = Path(legacy_cache_dir) if legacy_cache_dir else None
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"[scene-cache-error] cannot create cache dir: {self.cache_dir}: {exc}")
         self.memory_cache: Dict[str, np.ndarray] = {}
+        self.last_records: Dict[str, Dict[str, object]] = {}
 
     def _cache_key(self, video_name: str, timestamp_value: str) -> str:
         return f"{video_name}|{timestamp_value}"
 
-    def _cache_path(self, video_name: str, timestamp_value: str) -> Path:
+    def _cache_path(self, video_name: str, timestamp_value: str, cache_dir: Optional[Path] = None) -> Path:
         key = hashlib.md5(self._cache_key(video_name, timestamp_value).encode("utf-8")).hexdigest()
-        return self.cache_dir / f"{key}.npy"
+        return (cache_dir or self.cache_dir) / f"{key}.npy"
+
+    def _avi_path_text(self, video_name: str) -> str:
+        try:
+            return str(resolve_avi_path(video_name))
+        except Exception:
+            return "<unresolved>"
+
+    def _load_cache_file(self, path: Path, cache_key: str, source: str) -> Optional[np.ndarray]:
+        if not path.exists():
+            return None
+        try:
+            feature = np.load(path).astype(np.float32)
+        except Exception as exc:
+            print(f"[scene-cache-error] cannot read cache: {path}: {exc}")
+            return None
+        self.memory_cache[cache_key] = feature
+        self.last_records[cache_key] = {
+            "scene_source": source,
+            "scene_cache_path": str(path),
+            "scene_nonzero": int(np.count_nonzero(feature)),
+        }
+        if source == "legacy":
+            print(f"[scene-cache-hit] source=legacy path={path}")
+        return feature
 
     def get(self, video_name: str, timestamp_value: str) -> np.ndarray:
         cache_key = self._cache_key(video_name, timestamp_value)
         if cache_key in self.memory_cache:
-            return self.memory_cache[cache_key]
-
-        cache_path = self._cache_path(video_name, timestamp_value)
-        if cache_path.exists():
-            feature = np.load(cache_path).astype(np.float32)
-            self.memory_cache[cache_key] = feature
+            feature = self.memory_cache[cache_key]
+            record = dict(self.last_records.get(cache_key, {}))
+            record.update({"scene_source": "memory", "scene_nonzero": int(np.count_nonzero(feature))})
+            self.last_records[cache_key] = record
             return feature
+
+        writable_cache_path = self._cache_path(video_name, timestamp_value)
+        feature = self._load_cache_file(writable_cache_path, cache_key, "writable")
+        if feature is not None and np.any(feature):
+            return feature
+        if feature is not None:
+            print(
+                f"[scene-zero] writable cache is zero; trying legacy video_name={video_name}, "
+                f"timestamp={timestamp_value}, cache_path={writable_cache_path}"
+            )
+
+        legacy_cache_path = None
+        if self.legacy_cache_dir is not None:
+            legacy_cache_path = self._cache_path(video_name, timestamp_value, self.legacy_cache_dir)
+            if legacy_cache_path != writable_cache_path:
+                feature = self._load_cache_file(legacy_cache_path, cache_key, "legacy")
+                if feature is not None and np.any(feature):
+                    return feature
+                if feature is not None:
+                    print(
+                        f"[scene-zero] legacy cache is zero; falling back to video extract video_name={video_name}, "
+                        f"timestamp={timestamp_value}, cache_path={legacy_cache_path}"
+                    )
 
         image = read_real_scene_frame(video_name, timestamp_value)
         feature = encode_scene_pil_image(image) if image is not None else np.zeros(SCENE_FEAT_DIM, dtype=np.float32)
-        np.save(cache_path, feature)
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            np.save(writable_cache_path, feature)
+            scene_source = "generated"
+        except Exception as exc:
+            print(f"[scene-cache-error] cannot write cache: {writable_cache_path}: {exc}")
+            scene_source = "generated_unwritten"
         self.memory_cache[cache_key] = feature
+        self.last_records[cache_key] = {
+            "scene_source": scene_source,
+            "scene_cache_path": str(writable_cache_path),
+            "legacy_scene_cache_path": str(legacy_cache_path) if legacy_cache_path else None,
+            "scene_nonzero": int(np.count_nonzero(feature)),
+        }
+        if not np.any(feature):
+            print(
+                f"[scene-zero] video_name={video_name}, timestamp={timestamp_value}, "
+                f"avi_path={self._avi_path_text(video_name)}"
+            )
         return feature
+
+    def get_record(self, video_name: str, timestamp_value: str) -> Dict[str, object]:
+        return dict(self.last_records.get(self._cache_key(video_name, timestamp_value), {}))
 
 
 def load_real_scene_features(
@@ -182,18 +281,28 @@ def load_real_scene_features(
 ) -> Tuple[np.ndarray, Dict[str, object]]:
     features = []
     failed_count = 0
+    sample_records = []
     for timestamp_value in approx_timestamps.tolist():
         feature = cache.get(video_name, str(timestamp_value))
         if not np.any(feature):
             failed_count += 1
+        sample_records.append(cache.get_record(video_name, str(timestamp_value)))
         features.append(feature)
 
     stacked = np.stack(features).astype(np.float32) if features else np.zeros((0, SCENE_FEAT_DIM), dtype=np.float32)
+    source_counts: Dict[str, int] = {}
+    for sample_record in sample_records:
+        source = str(sample_record.get("scene_source", "unknown"))
+        source_counts[source] = source_counts.get(source, 0) + 1
     record = {
         "scene_source": "real",
         "avi_path": str(resolve_avi_path(video_name)),
         "sample_count": int(len(approx_timestamps)),
         "failed_scene_frames": int(failed_count),
+        "scene_source_counts": source_counts,
+        "sample_records": sample_records,
+        "scene_cache_dir": str(cache.cache_dir),
+        "legacy_scene_cache_dir": str(cache.legacy_cache_dir) if cache.legacy_cache_dir else None,
         "example_timestamps": [str(value) for value in approx_timestamps[:5].tolist()],
     }
     return stacked, record
