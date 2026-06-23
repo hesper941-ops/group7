@@ -145,19 +145,11 @@ class E2EMultitaskPerceiver(nn.Module):
         num_heads: int,
         dropout: float,
         min_gate: float = 0.02,
-        imu_drop_prob: float = 0.35,
-        audio_drop_prob: float = 0.20,
-        imu_max_scale: float = 0.15,
-        audio_max_scale: float = 0.10,
-        intent_refine_scale: float = 0.35,
-        gesture_logit_blend: float = 0.30,
     ):
         super().__init__()
         self.min_gate = min_gate
-        self.modality_drop_probs = {"imu": imu_drop_prob, "audio": audio_drop_prob}
-        self.support_scales = {"imu": imu_max_scale, "audio": audio_max_scale}
-        self.intent_refine_scale = intent_refine_scale
-        self.gesture_logit_blend = gesture_logit_blend
+        self.modality_drop_probs = {"imu": 0.35, "audio": 0.20}
+        self.support_scales = {"imu": 0.15, "audio": 0.10}
 
         self.imu_proj = nn.Sequential(nn.Linear(FEATURE_DIMS["imu"], model_dim), nn.LayerNorm(model_dim))
         self.gesture_proj = nn.Sequential(nn.Linear(FEATURE_DIMS["gesture"], model_dim), nn.LayerNorm(model_dim))
@@ -286,8 +278,7 @@ class E2EMultitaskPerceiver(nn.Module):
         intent_refine_logits = self.intent_refine_head(intent_refine_input)
         intent_refine_gate = self.intent_refine_gate(gesture_support_feature, fused)
         intent_logits = base_intent_logits + intent_refine_gate * (
-            self.intent_refine_scale * intent_refine_logits
-            + self.gesture_logit_blend * gesture_intent_logits
+            0.35 * intent_refine_logits + 0.30 * gesture_intent_logits
         )
         joint_logits = scene_logits.index_select(1, self.joint_scene_index) + intent_logits.index_select(1, self.joint_intent_index)
         modality_gates = torch.cat(
@@ -333,13 +324,6 @@ def build_model(
         depth=config.depth,
         num_heads=config.num_heads,
         dropout=config.dropout,
-        min_gate=config.min_gate,
-        imu_drop_prob=config.imu_drop_prob,
-        audio_drop_prob=config.audio_drop_prob,
-        imu_max_scale=config.imu_max_scale,
-        audio_max_scale=config.audio_max_scale,
-        intent_refine_scale=config.intent_refine_scale,
-        gesture_logit_blend=config.gesture_logit_blend,
     )
 
 
@@ -354,21 +338,4 @@ def model_config_dict(config: E2EConfig, num_classes: int) -> Dict[str, Any]:
         "depth": int(config.depth),
         "num_heads": int(config.num_heads),
         "dropout": float(config.dropout),
-        "min_gate": float(config.min_gate),
-        "imu_drop_prob": float(config.imu_drop_prob),
-        "audio_drop_prob": float(config.audio_drop_prob),
-        "imu_max_scale": float(config.imu_max_scale),
-        "audio_max_scale": float(config.audio_max_scale),
-        "intent_refine_scale": float(config.intent_refine_scale),
-        "gesture_logit_blend": float(config.gesture_logit_blend),
-        "learning_rate": float(config.learning_rate),
-        "weight_decay": float(config.weight_decay),
-        "label_smoothing": float(config.label_smoothing),
-        "grad_clip_norm": float(config.grad_clip_norm),
-        "intent_aux_weight": float(config.intent_aux_weight),
-        "scene_aux_weight": float(config.scene_aux_weight),
-        "gesture_intent_aux_weight": float(config.gesture_intent_aux_weight),
-        "base_intent_aux_weight": float(config.base_intent_aux_weight),
-        "selection_intent_weight": float(config.selection_intent_weight),
-        "selection_scene_weight": float(config.selection_scene_weight),
     }

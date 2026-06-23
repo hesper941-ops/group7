@@ -206,8 +206,8 @@ class E2EConfig:
     model: str = "baseline"
     epochs: int = 5
     batch_size: int = 8
-    learning_rate: float = 5e-4
-    weight_decay: float = 3e-4
+    learning_rate: float = 1e-3
+    weight_decay: float = 1e-4
     seed: int = 42
     val_split: float = 0.2
     patience: int = 4
@@ -225,13 +225,6 @@ class E2EConfig:
     label_smoothing: float = 0.03
     grad_clip_norm: float = 1.0
     no_early_stop: bool = False
-    min_gate: float = 0.02
-    imu_drop_prob: float = 0.35
-    audio_drop_prob: float = 0.20
-    imu_max_scale: float = 0.15
-    audio_max_scale: float = 0.10
-    intent_refine_scale: float = 0.35
-    gesture_logit_blend: float = 0.30
 
     @property
     def ar_data_process_dir(self) -> Path:
@@ -321,18 +314,11 @@ def build_config(
     model: str = "baseline",
     epochs: int = 5,
     batch_size: int = 8,
-    learning_rate: float = 5e-4,
-    weight_decay: float = 3e-4,
+    learning_rate: float = 1e-3,
+    weight_decay: float = 1e-4,
     seed: int = 42,
     patience: int = 4,
     no_early_stop: bool = False,
-    min_gate: float = 0.02,
-    imu_drop_prob: float = 0.35,
-    audio_drop_prob: float = 0.20,
-    imu_max_scale: float = 0.15,
-    audio_max_scale: float = 0.10,
-    intent_refine_scale: float = 0.35,
-    gesture_logit_blend: float = 0.30,
 ) -> E2EConfig:
     project_root = resolve_path(None, "SMART_AR_ROOT", default_project_root())
     default_data = project_root / "dataset" / "AR_Data_process3.0"
@@ -351,11 +337,4 @@ def build_config(
         seed=seed,
         patience=patience,
         no_early_stop=no_early_stop,
-        min_gate=min_gate,
-        imu_drop_prob=imu_drop_prob,
-        audio_drop_prob=audio_drop_prob,
-        imu_max_scale=imu_max_scale,
-        audio_max_scale=audio_max_scale,
-        intent_refine_scale=intent_refine_scale,
-        gesture_logit_blend=gesture_logit_blend,
     )

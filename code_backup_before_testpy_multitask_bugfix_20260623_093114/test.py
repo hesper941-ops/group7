@@ -50,14 +50,16 @@ def save_predictions(
     with path.open("w", newline="", encoding="utf-8") as file:
         fieldnames = [
             "sample_id",
-            "video_name",
+            "video_file",
             "scene",
             "true_joint",
             "pred_joint",
             "true_intent",
+            "pred_intent",
+            "true_scene",
+            "pred_scene",
             "pred_intent_from_joint",
             "pred_intent_from_head",
-            "true_scene",
             "pred_scene_from_joint",
             "pred_scene_from_head",
         ]
@@ -71,14 +73,16 @@ def save_predictions(
             writer.writerow(
                 {
                     "sample_id": sample.sample_id,
-                    "video_name": sample.video_name,
+                    "video_file": sample.video_name,
                     "scene": sample.scene,
                     "true_joint": true_label,
                     "pred_joint": pred_label,
                     "true_intent": true_intent,
+                    "pred_intent": pred_intent,
+                    "true_scene": true_scene,
+                    "pred_scene": pred_scene,
                     "pred_intent_from_joint": pred_intent,
                     "pred_intent_from_head": head_intent,
-                    "true_scene": true_scene,
                     "pred_scene_from_joint": pred_scene,
                     "pred_scene_from_head": head_scene,
                 }
@@ -98,23 +102,6 @@ def apply_checkpoint_model_config(config, checkpoint: dict):
         depth=int(model_config.get("depth", config.depth)),
         num_heads=int(model_config.get("num_heads", config.num_heads)),
         dropout=float(model_config.get("dropout", config.dropout)),
-        learning_rate=float(model_config.get("learning_rate", config.learning_rate)),
-        weight_decay=float(model_config.get("weight_decay", config.weight_decay)),
-        label_smoothing=float(model_config.get("label_smoothing", config.label_smoothing)),
-        grad_clip_norm=float(model_config.get("grad_clip_norm", config.grad_clip_norm)),
-        intent_aux_weight=float(model_config.get("intent_aux_weight", config.intent_aux_weight)),
-        scene_aux_weight=float(model_config.get("scene_aux_weight", config.scene_aux_weight)),
-        gesture_intent_aux_weight=float(model_config.get("gesture_intent_aux_weight", config.gesture_intent_aux_weight)),
-        base_intent_aux_weight=float(model_config.get("base_intent_aux_weight", config.base_intent_aux_weight)),
-        selection_intent_weight=float(model_config.get("selection_intent_weight", config.selection_intent_weight)),
-        selection_scene_weight=float(model_config.get("selection_scene_weight", config.selection_scene_weight)),
-        min_gate=float(model_config.get("min_gate", config.min_gate)),
-        imu_drop_prob=float(model_config.get("imu_drop_prob", config.imu_drop_prob)),
-        audio_drop_prob=float(model_config.get("audio_drop_prob", config.audio_drop_prob)),
-        imu_max_scale=float(model_config.get("imu_max_scale", config.imu_max_scale)),
-        audio_max_scale=float(model_config.get("audio_max_scale", config.audio_max_scale)),
-        intent_refine_scale=float(model_config.get("intent_refine_scale", config.intent_refine_scale)),
-        gesture_logit_blend=float(model_config.get("gesture_logit_blend", config.gesture_logit_blend)),
     )
 
 
@@ -193,22 +180,6 @@ def test(config, checkpoint_path: Path) -> Path:
         zero_division=0,
         digits=4,
     )
-    intent_head_report = classification_report(
-        true_intent,
-        pred_intent_head,
-        labels=intent_names,
-        target_names=intent_names,
-        zero_division=0,
-        digits=4,
-    )
-    scene_head_report = classification_report(
-        true_scene,
-        pred_scene_head,
-        labels=scene_names,
-        target_names=scene_names,
-        zero_division=0,
-        digits=4,
-    )
 
     print("[joint]")
     print(joint_report)
@@ -216,16 +187,10 @@ def test(config, checkpoint_path: Path) -> Path:
     print(intent_report)
     print("[scene]")
     print(scene_report)
-    print("[intent_head]")
-    print(intent_head_report)
-    print("[scene_head]")
-    print(scene_head_report)
 
     joint_cm = confusion_matrix(true_joint, pred_joint, labels=joint_names)
     intent_cm = confusion_matrix(true_intent, pred_intent, labels=intent_names)
     scene_cm = confusion_matrix(true_scene, pred_scene, labels=scene_names)
-    intent_head_cm = confusion_matrix(true_intent, pred_intent_head, labels=intent_names)
-    scene_head_cm = confusion_matrix(true_scene, pred_scene_head, labels=scene_names)
     metrics = {
         "test_loss": float(test_loss),
         "joint_accuracy": float(joint_acc),
@@ -236,13 +201,9 @@ def test(config, checkpoint_path: Path) -> Path:
         "classification_report": joint_report,
         "intent_classification_report": intent_report,
         "scene_classification_report": scene_report,
-        "intent_head_classification_report": intent_head_report,
-        "scene_head_classification_report": scene_head_report,
         "joint_confusion_matrix": joint_cm.tolist(),
         "intent_confusion_matrix": intent_cm.tolist(),
         "scene_confusion_matrix": scene_cm.tolist(),
-        "intent_head_confusion_matrix": intent_head_cm.tolist(),
-        "scene_head_confusion_matrix": scene_head_cm.tolist(),
         "joint_class_names": joint_names,
         "intent_class_names": intent_names,
         "scene_class_names": scene_names,

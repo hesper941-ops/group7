@@ -35,8 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--learning-rate", type=float, default=5e-4)
-    parser.add_argument("--weight-decay", type=float, default=3e-4)
+    parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--no-early-stop", action="store_true")
@@ -417,7 +417,6 @@ def train(config: E2EConfig) -> Path:
                     "best_val_scene_acc": best_val_scene_acc,
                     "best_val_loss": best_val_loss,
                     "best_selection_score": best_selection_score,
-                    "best_val_selection_score": best_selection_score,
                 },
                 run_dir / "best_model.pt",
             )
@@ -444,7 +443,6 @@ def train(config: E2EConfig) -> Path:
         "best_val_intent_acc": best_val_intent_acc,
         "best_val_scene_acc": best_val_scene_acc,
         "best_val_loss": best_val_loss,
-        "best_selection_score": best_selection_score,
         "best_val_selection_score": best_selection_score,
         "train_samples": int(len(y_train)),
         "val_samples": int(len(y_val)),
