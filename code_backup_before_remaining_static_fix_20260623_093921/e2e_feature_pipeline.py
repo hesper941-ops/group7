@@ -9,15 +9,7 @@ from typing import Dict, Iterable
 
 import numpy as np
 
-from e2e_config import (
-    E2EConfig,
-    FEATURE_DIMS,
-    FISHEYE_AVI_BY_VIDEO,
-    MODALITY_KEYS,
-    TARGET_TIMESTEPS,
-    UNKNOWN_LABELS,
-    VIDEO_LABELS,
-)
+from e2e_config import E2EConfig, FEATURE_DIMS, FISHEYE_AVI_BY_VIDEO, MODALITY_KEYS, TARGET_TIMESTEPS, VIDEO_LABELS
 from e2e_utils import ensure_dir
 
 
@@ -98,7 +90,7 @@ class E2EFeaturePipeline:
             raise ValueError(f"Unsupported raw extraction modality: {modality}")
         path = self.get_feature_paths(video_name)[modality]
         if path.exists():
-            print(f"[cache] using existing legacy {modality} feature for {video_name}: {path}")
+            print(f"[cache] using existing {modality} feature for {video_name}: {path}")
             return path
         print(f"[extract] building {modality} feature for {video_name}")
         if modality == "gesture":
@@ -153,28 +145,19 @@ class E2EFeaturePipeline:
         if count <= 0:
             raise FeatureExtractionError(f"No aligned samples are available for {video_name}")
 
-        labels_raw = np.asarray(gesture_data["labels"][:count], dtype=object)
-        timestamps_raw = np.asarray(gesture_data["approx_timestamps"][:count], dtype=object)
-        valid_mask = np.array([str(label) not in UNKNOWN_LABELS for label in labels_raw], dtype=bool)
-        if not valid_mask.any():
-            raise FeatureExtractionError(f"All labels are filtered as unknown for {video_name}")
-
-        labels = labels_raw[valid_mask].astype(np.int64)
-        timestamps = timestamps_raw[valid_mask]
-        if len(labels) != count:
-            print(f"[filter] {video_name}: kept {len(labels)}/{count} samples after legacy unknown-label filter")
+        labels = np.asarray(gesture_data["labels"][:count], dtype=np.int64)
+        timestamps = np.asarray(gesture_data["approx_timestamps"][:count], dtype=object)
         features = {
-            "imu": normalize_dense_payload(np.asarray(imu_data["features"][:count]), "imu")[valid_mask],
-            "gesture": normalize_dense_payload(np.asarray(gesture_data["features"][:count]), "gesture")[valid_mask],
-            "audio": normalize_audio_payload(audio_data[:count])[valid_mask],
-            "text": normalize_dense_payload(np.asarray(text_data["features"][:count]), "text")[valid_mask],
+            "imu": normalize_dense_payload(np.asarray(imu_data["features"][:count]), "imu"),
+            "gesture": normalize_dense_payload(np.asarray(gesture_data["features"][:count]), "gesture"),
+            "audio": normalize_audio_payload(audio_data[:count]),
+            "text": normalize_dense_payload(np.asarray(text_data["features"][:count]), "text"),
             "scene": self._load_scene_features(video_name, timestamps),
         }
         self._meta_cache[video_name] = {
             "labels": labels,
             "approx_timestamps": timestamps,
-            "count": np.asarray(len(labels), dtype=np.int64),
-            "raw_count": np.asarray(count, dtype=np.int64),
+            "count": np.asarray(count, dtype=np.int64),
         }
         return features
 
@@ -223,16 +206,10 @@ class E2EFeaturePipeline:
             mid_abs = mid_dt.timestamp()
             segment = df[(df["timestamp_sec"] >= mid_abs - 0.75) & (df["timestamp_sec"] <= mid_abs + 0.75)]
             features.append(self._sample_imu_segment(segment))
-        features_array = np.asarray(features, dtype=np.float32)
-        if len(features_array) > 0:
-            mean = np.mean(features_array, axis=(0, 1), keepdims=True)
-            std = np.std(features_array, axis=(0, 1), keepdims=True) + 1e-8
-            features_array = (features_array - mean) / std
-
         payload = {
             "imu_id": np.arange(len(features)),
             "approx_timestamps": approx_timestamps,
-            "features": features_array.astype(np.float32),
+            "features": np.asarray(features, dtype=np.float32),
             "labels": np.asarray(labels),
         }
         ensure_dir(paths["imu"].parent)
@@ -352,45 +329,34 @@ class E2EFeaturePipeline:
         )
         try:
             import cv2
-            import mediapipe as mp
             import torch
             from PIL import Image
             from transformers import CLIPImageProcessor, CLIPVisionModel
         except Exception as exc:
-            raise FeatureExtractionError(
-                f"Gesture extraction requires cv2, mediapipe, torch, PIL, and transformers on the server: {exc}"
-            ) from exc
+            raise FeatureExtractionError(f"Gesture extraction requires cv2, torch, PIL, and transformers on the server: {exc}") from exc
 
         paths = self.get_feature_paths(video_name)
         payload = np.load(timestamp_path, allow_pickle=True).item()
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         processor = CLIPImageProcessor.from_pretrained(str(self.config.clip_model_path), local_files_only=True)
         vision = CLIPVisionModel.from_pretrained(str(self.config.clip_model_path), local_files_only=True).to(device).eval()
-        hands = mp.solutions.hands.Hands(static_image_mode=True, max_num_hands=2, min_detection_confidence=0.5)
 
         valid_features = []
         valid_labels = []
         valid_timestamps = []
         debug_log = {}
-        try:
-            for index, timestamp_value in enumerate(payload["approx_timestamps"]):
-                utc_dt = datetime.fromisoformat(str(timestamp_value).replace("Z", "+00:00")).replace(tzinfo=None)
-                center_ms = self._fisheye_offset_ms(Path(fisheye_path), utc_dt)
-                if center_ms is None:
-                    continue
-                sequence = self._extract_clip_sequence(Path(fisheye_path), center_ms, processor, vision, device, hands)
-                if sequence is None:
-                    continue
-                valid_features.append(sequence)
-                valid_labels.append(payload["labels"][index])
-                valid_timestamps.append(timestamp_value)
-                debug_log[str(len(valid_features) - 1)] = {
-                    "original_idx": index,
-                    "utc_time": str(timestamp_value),
-                    "msec_center": round(center_ms, 2),
-                }
-        finally:
-            hands.close()
+        for index, timestamp_value in enumerate(payload["approx_timestamps"]):
+            utc_dt = datetime.fromisoformat(str(timestamp_value).replace("Z", "+00:00")).replace(tzinfo=None)
+            center_ms = self._fisheye_offset_ms(Path(fisheye_path), utc_dt)
+            if center_ms is None:
+                continue
+            sequence = self._extract_clip_sequence(Path(fisheye_path), center_ms, processor, vision, device)
+            if sequence is None:
+                continue
+            valid_features.append(sequence)
+            valid_labels.append(payload["labels"][index])
+            valid_timestamps.append(timestamp_value)
+            debug_log[str(len(valid_features) - 1)] = {"original_idx": index, "utc_time": str(timestamp_value), "msec_center": round(center_ms, 2)}
         if not valid_features:
             raise FeatureExtractionError(f"Gesture extraction produced no valid samples for {video_name}")
         final_payload = {
@@ -564,28 +530,7 @@ class E2EFeaturePipeline:
         duration_ms = frame_count / fps * 1000.0
         return offset_ms if 0 <= offset_ms <= duration_ms else None
 
-    def _crop_hand_like_legacy(self, image, hands):
-        import cv2
-        from PIL import Image
-
-        image_np = np.asarray(image)
-        height, width = image_np.shape[:2]
-        image_rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
-        results = hands.process(image_rgb)
-        if results.multi_hand_landmarks:
-            xs = [int(landmark.x * width) for hand in results.multi_hand_landmarks for landmark in hand.landmark]
-            ys = [int(landmark.y * height) for hand in results.multi_hand_landmarks for landmark in hand.landmark]
-            x1, y1, x2, y2 = max(0, min(xs)), max(0, min(ys)), min(width, max(xs)), min(height, max(ys))
-            crop_width, crop_height = x2 - x1, y2 - y1
-            pad = 0.4
-            x1 = max(0, int(x1 - crop_width * pad))
-            y1 = max(0, int(y1 - crop_height * pad))
-            x2 = min(width, int(x2 + crop_width * pad))
-            y2 = min(height, int(y2 + crop_height * pad))
-            return image.crop((x1, y1, x2, y2)).resize((224, 224), Image.LANCZOS)
-        return image.rotate(0).resize((224, 224), Image.LANCZOS)
-
-    def _extract_clip_sequence(self, video_path: Path, center_ms: float, processor, vision, device, hands) -> np.ndarray | None:
+    def _extract_clip_sequence(self, video_path: Path, center_ms: float, processor, vision, device) -> np.ndarray | None:
         import cv2
         import torch
         from PIL import Image
@@ -609,9 +554,8 @@ class E2EFeaturePipeline:
                 ok, frame = cap.read()
                 if not ok:
                     break
-                image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                hand_box = self._crop_hand_like_legacy(image, hands)
-                inputs = processor(images=hand_box.convert("RGB"), return_tensors="pt").to(device)
+                image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).resize((224, 224))
+                inputs = processor(images=image.convert("RGB"), return_tensors="pt").to(device)
                 outputs = vision(**inputs)
                 seq_features.append(outputs.last_hidden_state[:, 0, :].squeeze(0).cpu().numpy())
         cap.release()

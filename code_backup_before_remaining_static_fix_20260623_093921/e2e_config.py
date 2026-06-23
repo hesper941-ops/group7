@@ -15,7 +15,6 @@ FEATURE_DIMS: Dict[str, int] = {
     "scene": 768,
 }
 TARGET_TIMESTEPS = 10
-UNKNOWN_LABELS = {"未知", "unknown", "Unknown"}
 
 INTENT_NAMES = {
     0: "menu",
