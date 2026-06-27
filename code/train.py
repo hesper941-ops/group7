@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--cache-dir", default=None)
+    parser.add_argument("--features-dir", default=None)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=5e-4)
@@ -479,6 +480,7 @@ def main() -> None:
         data_root=args.data_root,
         output_dir=args.output_dir,
         cache_dir=args.cache_dir,
+        features_dir=args.features_dir,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,

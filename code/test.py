@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", default=None)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--cache-dir", default=None)
+    parser.add_argument("--features-dir", default=None)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
@@ -263,6 +264,7 @@ def main() -> None:
         data_root=args.data_root,
         output_dir=str(checkpoint_path.parent),
         cache_dir=args.cache_dir,
+        features_dir=args.features_dir,
         batch_size=args.batch_size,
         seed=args.seed,
     )

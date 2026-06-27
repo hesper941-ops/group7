@@ -204,6 +204,7 @@ class E2EConfig:
     data_root: Path
     output_dir: Path
     cache_dir: Path
+    features_dir: Path | None = None
     model: str = "baseline"
     epochs: int = 5
     batch_size: int = 8
@@ -253,6 +254,8 @@ class E2EConfig:
 
     @property
     def processed_data_dir(self) -> Path:
+        if self.features_dir is not None:
+            return self.features_dir
         if self.data_root.name.lower() == "data":
             return self.data_root
         return self.ar_data_process_dir / "data"
@@ -328,6 +331,7 @@ def build_config(
     data_root: str | None = None,
     output_dir: str | None = None,
     cache_dir: str | None = None,
+    features_dir: str | None = None,
     model: str = "baseline",
     epochs: int = 5,
     batch_size: int = 8,
@@ -348,11 +352,13 @@ def build_config(
     default_data = project_root / "dataset" / "AR_Data_process3.0"
     default_output = project_root / "outputs" / "e2e" / model
     default_cache = project_root / "outputs" / "e2e" / "cache"
+    default_features = project_root / "outputs" / "e2e" / "processed_data"
     return E2EConfig(
         project_root=project_root,
         data_root=resolve_path(data_root, "SMART_AR_DATA_ROOT", default_data),
         output_dir=resolve_path(output_dir, "SMART_AR_OUTPUT_DIR", default_output),
         cache_dir=resolve_path(cache_dir, "SMART_AR_CACHE_DIR", default_cache),
+        features_dir=resolve_path(features_dir, "SMART_AR_FEATURES_DIR", default_features),
         model=model,
         epochs=epochs,
         batch_size=batch_size,
