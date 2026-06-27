@@ -205,6 +205,11 @@ class E2EConfig:
     output_dir: Path
     cache_dir: Path
     features_dir: Path | None = None
+    use_modality_mask: bool = False
+    modality_dropout: bool = False
+    drop_one_prob: float = 0.30
+    drop_two_prob: float = 0.10
+    missing_manifest: Path | None = None
     model: str = "baseline"
     epochs: int = 5
     batch_size: int = 8
@@ -332,6 +337,11 @@ def build_config(
     output_dir: str | None = None,
     cache_dir: str | None = None,
     features_dir: str | None = None,
+    use_modality_mask: bool = False,
+    modality_dropout: bool = False,
+    drop_one_prob: float = 0.30,
+    drop_two_prob: float = 0.10,
+    missing_manifest: str | None = None,
     model: str = "baseline",
     epochs: int = 5,
     batch_size: int = 8,
@@ -359,6 +369,11 @@ def build_config(
         output_dir=resolve_path(output_dir, "SMART_AR_OUTPUT_DIR", default_output),
         cache_dir=resolve_path(cache_dir, "SMART_AR_CACHE_DIR", default_cache),
         features_dir=resolve_path(features_dir, "SMART_AR_FEATURES_DIR", default_features),
+        use_modality_mask=use_modality_mask,
+        modality_dropout=modality_dropout,
+        drop_one_prob=drop_one_prob,
+        drop_two_prob=drop_two_prob,
+        missing_manifest=Path(missing_manifest).expanduser().resolve() if missing_manifest else None,
         model=model,
         epochs=epochs,
         batch_size=batch_size,

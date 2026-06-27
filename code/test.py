@@ -11,7 +11,12 @@ import torch.nn as nn
 from sklearn.metrics import classification_report, confusion_matrix
 
 from e2e_config import INTENT_NAMES, SCENE_ID_TO_NAME, build_config
-from e2e_dataset import E2EMultimodalDataset, dataset_to_arrays, describe_samples
+from e2e_dataset import (
+    E2EMultimodalDataset,
+    dataset_to_arrays,
+    dataset_to_arrays_with_masks,
+    describe_samples,
+)
 from e2e_models import build_model
 from e2e_utils import compute_accuracy, ensure_dir, load_pickle, save_json, make_jsonable
 from train import apply_scalers, evaluate, make_loader
@@ -19,13 +24,15 @@ from train import apply_scalers, evaluate, make_loader
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="End-to-end multimodal AR intent testing")
-    parser.add_argument("--model", default="baseline", choices=["baseline", "improved"])
+    parser.add_argument("--model", default="baseline", choices=["baseline", "improved", "robust_mask"])
     parser.add_argument("--data-root", default=None)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--features-dir", default=None)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--use-modality-mask", action="store_true")
+    parser.add_argument("--missing-manifest", default=None)
     return parser.parse_args()
 
 
@@ -116,6 +123,7 @@ def apply_checkpoint_model_config(config, checkpoint: dict):
         audio_max_scale=float(model_config.get("audio_max_scale", config.audio_max_scale)),
         intent_refine_scale=float(model_config.get("intent_refine_scale", config.intent_refine_scale)),
         gesture_logit_blend=float(model_config.get("gesture_logit_blend", config.gesture_logit_blend)),
+        use_modality_mask=bool(model_config.get("use_modality_mask", config.use_modality_mask)),
     )
 
 
@@ -133,7 +141,13 @@ def test(config, checkpoint_path: Path) -> Path:
 
     print("[step] build test dataset from raw data paths")
     test_dataset = E2EMultimodalDataset(config, "test")
-    features_raw, intent_labels, scene_labels, joint_labels_raw = dataset_to_arrays(test_dataset)
+    if config.model == "robust_mask":
+        features_raw, intent_labels, scene_labels, joint_labels_raw, modality_masks = dataset_to_arrays_with_masks(
+            test_dataset
+        )
+    else:
+        features_raw, intent_labels, scene_labels, joint_labels_raw = dataset_to_arrays(test_dataset)
+        modality_masks = None
     print("test users: C")
     print(f"[split] test videos -> {describe_samples(test_dataset.samples)}")
     features = apply_scalers(features_raw, scalers)
@@ -151,7 +165,15 @@ def test(config, checkpoint_path: Path) -> Path:
     ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    loader = make_loader(features, y_test, intent_labels, scene_labels, config.batch_size, False)
+    loader = make_loader(
+        features,
+        y_test,
+        intent_labels,
+        scene_labels,
+        config.batch_size,
+        False,
+        modality_masks,
+    )
     criteria = {
         "joint": nn.CrossEntropyLoss(),
         "intent": nn.CrossEntropyLoss(),
@@ -248,6 +270,8 @@ def test(config, checkpoint_path: Path) -> Path:
         "intent_class_names": intent_names,
         "scene_class_names": scene_names,
     }
+    if config.model == "robust_mask":
+        metrics["avg_modality_gates"] = test_metrics["avg_modality_gates"]
     save_json(make_jsonable(metrics), output_dir / "test_metrics.json")
     save_predictions(output_dir / "test_predictions.csv", test_dataset, true_joint, pred_joint, pred_intent_head, pred_scene_head)
     print(f"[saved] {output_dir}")
@@ -265,6 +289,8 @@ def main() -> None:
         output_dir=str(checkpoint_path.parent),
         cache_dir=args.cache_dir,
         features_dir=args.features_dir,
+        use_modality_mask=args.use_modality_mask or args.model == "robust_mask",
+        missing_manifest=args.missing_manifest,
         batch_size=args.batch_size,
         seed=args.seed,
     )

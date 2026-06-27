@@ -319,6 +319,18 @@ def build_model(
     num_scene_classes: int = 2,
     joint_class_names: List[str] | None = None,
 ) -> nn.Module:
+    if config.model == "robust_mask":
+        if joint_class_names is None:
+            raise ValueError("joint_class_names is required for the multitask joint head mapping")
+        from e2e_robust_models import build_robust_mask_model
+
+        return build_robust_mask_model(
+            config,
+            num_classes,
+            num_intent_classes,
+            num_scene_classes,
+            joint_class_names,
+        )
     if config.model != "baseline":
         raise NotImplementedError("--model improved is reserved; this refactor currently trains --model baseline only")
     if joint_class_names is None:
@@ -344,7 +356,7 @@ def build_model(
 
 
 def model_config_dict(config: E2EConfig, num_classes: int) -> Dict[str, Any]:
-    return {
+    model_config = {
         "model": config.model,
         "num_classes": int(num_classes),
         "num_intent_classes": 6,
@@ -372,3 +384,6 @@ def model_config_dict(config: E2EConfig, num_classes: int) -> Dict[str, Any]:
         "selection_intent_weight": float(config.selection_intent_weight),
         "selection_scene_weight": float(config.selection_scene_weight),
     }
+    if config.model == "robust_mask":
+        model_config["use_modality_mask"] = bool(config.use_modality_mask)
+    return model_config

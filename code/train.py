@@ -22,14 +22,20 @@ from e2e_config import (
     MODALITY_KEYS,
     FEATURE_DIMS,
 )
-from e2e_dataset import E2EMultimodalDataset, dataset_to_arrays, describe_samples
+from e2e_dataset import (
+    E2EMultimodalDataset,
+    dataset_to_arrays,
+    dataset_to_arrays_with_masks,
+    describe_samples,
+)
+from e2e_modality_mask import apply_random_modality_dropout
 from e2e_models import build_model, model_config_dict
 from e2e_utils import ensure_dir, get_run_id, save_json, save_pickle, set_seed, write_csv_row, make_jsonable
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="End-to-end multimodal AR intent training")
-    parser.add_argument("--model", default="baseline", choices=["baseline", "improved"])
+    parser.add_argument("--model", default="baseline", choices=["baseline", "improved", "robust_mask"])
     parser.add_argument("--data-root", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--cache-dir", default=None)
@@ -41,6 +47,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--no-early-stop", action="store_true")
+    parser.add_argument("--use-modality-mask", action="store_true")
+    parser.add_argument("--modality-dropout", action="store_true")
+    parser.add_argument("--drop-one-prob", type=float, default=0.30)
+    parser.add_argument("--drop-two-prob", type=float, default=0.10)
+    parser.add_argument("--missing-manifest", default=None)
     return parser.parse_args()
 
 
@@ -68,9 +79,10 @@ def make_loader(
     scene_labels: np.ndarray,
     batch_size: int,
     shuffle: bool,
+    modality_masks: np.ndarray | None = None,
 ):
     return DataLoader(
-        MultimodalSceneDataset(features, joint_labels, intent_labels, scene_labels),
+        MultimodalSceneDataset(features, joint_labels, intent_labels, scene_labels, modality_masks),
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=0,
@@ -79,7 +91,14 @@ def make_loader(
 
 
 class MultimodalSceneDataset(Dataset):
-    def __init__(self, features: dict, joint_labels: np.ndarray, intent_labels: np.ndarray, scene_labels: np.ndarray):
+    def __init__(
+        self,
+        features: dict,
+        joint_labels: np.ndarray,
+        intent_labels: np.ndarray,
+        scene_labels: np.ndarray,
+        modality_masks: np.ndarray | None = None,
+    ):
         self.imu = torch.from_numpy(features["imu"].astype(np.float32))
         self.gesture = torch.from_numpy(features["gesture"].astype(np.float32))
         self.audio = torch.from_numpy(features["audio"].astype(np.float32))
@@ -88,12 +107,15 @@ class MultimodalSceneDataset(Dataset):
         self.joint_labels = torch.from_numpy(joint_labels.astype(np.int64))
         self.intent_labels = torch.from_numpy(intent_labels.astype(np.int64))
         self.scene_labels = torch.from_numpy(scene_labels.astype(np.int64))
+        self.modality_masks = (
+            torch.from_numpy(modality_masks.astype(np.float32)) if modality_masks is not None else None
+        )
 
     def __len__(self) -> int:
         return len(self.joint_labels)
 
     def __getitem__(self, index: int):
-        return (
+        baseline_item = (
             self.imu[index],
             self.gesture[index],
             self.audio[index],
@@ -103,6 +125,81 @@ class MultimodalSceneDataset(Dataset):
             self.intent_labels[index],
             self.scene_labels[index],
         )
+        if self.modality_masks is None:
+            return baseline_item
+        return (*baseline_item, self.modality_masks[index])
+
+
+def prepare_batch(batch, device: torch.device, config: E2EConfig, training: bool) -> tuple[dict, torch.Tensor, torch.Tensor, torch.Tensor]:
+    if config.model == "robust_mask":
+        (
+            batch_imu,
+            batch_gesture,
+            batch_audio,
+            batch_text,
+            batch_scene,
+            batch_joint_y,
+            batch_intent_y,
+            batch_scene_y,
+            batch_modality_mask,
+        ) = batch
+        feature_batch = {
+            "imu": batch_imu.to(device),
+            "gesture": batch_gesture.to(device),
+            "audio": batch_audio.to(device),
+            "text": batch_text.to(device),
+            "scene": batch_scene.to(device),
+            "modality_mask": batch_modality_mask.to(device),
+        }
+        if training and config.modality_dropout:
+            feature_batch = apply_random_modality_dropout(
+                feature_batch,
+                config.drop_one_prob,
+                config.drop_two_prob,
+            )
+    else:
+        (
+            batch_imu,
+            batch_gesture,
+            batch_audio,
+            batch_text,
+            batch_scene,
+            batch_joint_y,
+            batch_intent_y,
+            batch_scene_y,
+        ) = batch
+        feature_batch = {
+            "imu": batch_imu.to(device),
+            "gesture": batch_gesture.to(device),
+            "audio": batch_audio.to(device),
+            "text": batch_text.to(device),
+            "scene": batch_scene.to(device),
+        }
+    return (
+        feature_batch,
+        batch_joint_y.to(device),
+        batch_intent_y.to(device),
+        batch_scene_y.to(device),
+    )
+
+
+def forward_feature_batch(model, feature_batch: dict, config: E2EConfig) -> dict:
+    if config.model == "robust_mask":
+        return model(
+            feature_batch["imu"],
+            feature_batch["gesture"],
+            feature_batch["audio"],
+            feature_batch["text"],
+            feature_batch["scene"],
+            feature_batch["modality_mask"],
+        )
+    return model(
+        feature_batch["imu"],
+        feature_batch["gesture"],
+        feature_batch["audio"],
+        feature_batch["text"],
+        feature_batch["scene"],
+    )
 
 
 def build_class_weights(labels: np.ndarray, num_classes: int, device: torch.device) -> torch.Tensor:
@@ -150,18 +247,12 @@ def train_one_epoch(model, loader, criteria: dict, optimizer, device: torch.devi
     total_samples = 0
     correct = {"joint": 0, "intent": 0, "scene": 0}
     loss_meter = {"joint_loss": 0.0, "intent_loss": 0.0, "base_intent_loss": 0.0, "scene_loss": 0.0, "gesture_intent_loss": 0.0}
-    for batch_imu, batch_gesture, batch_audio, batch_text, batch_scene, batch_joint_y, batch_intent_y, batch_scene_y in loader:
-        batch_imu = batch_imu.to(device)
-        batch_gesture = batch_gesture.to(device)
-        batch_audio = batch_audio.to(device)
-        batch_text = batch_text.to(device)
-        batch_scene = batch_scene.to(device)
-        batch_joint_y = batch_joint_y.to(device)
-        batch_intent_y = batch_intent_y.to(device)
-        batch_scene_y = batch_scene_y.to(device)
-
+    for batch in loader:
+        feature_batch, batch_joint_y, batch_intent_y, batch_scene_y = prepare_batch(
+            batch, device, config, training=True
+        )
         optimizer.zero_grad()
-        outputs = model(batch_imu, batch_gesture, batch_audio, batch_text, batch_scene)
+        outputs = forward_feature_batch(model, feature_batch, config)
         loss, loss_parts = compute_loss(outputs, batch_joint_y, batch_intent_y, batch_scene_y, criteria, config)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip_norm)
@@ -194,16 +285,11 @@ def evaluate(model, loader, criteria: dict, device: torch.device, config: E2ECon
     y_true = {"joint": [], "intent": [], "scene": []}
     y_pred = {"joint": [], "intent": [], "scene": []}
     all_gates = []
-    for batch_imu, batch_gesture, batch_audio, batch_text, batch_scene, batch_joint_y, batch_intent_y, batch_scene_y in loader:
-        batch_imu = batch_imu.to(device)
-        batch_gesture = batch_gesture.to(device)
-        batch_audio = batch_audio.to(device)
-        batch_text = batch_text.to(device)
-        batch_scene = batch_scene.to(device)
-        batch_joint_y = batch_joint_y.to(device)
-        batch_intent_y = batch_intent_y.to(device)
-        batch_scene_y = batch_scene_y.to(device)
-        outputs = model(batch_imu, batch_gesture, batch_audio, batch_text, batch_scene)
+    for batch in loader:
+        feature_batch, batch_joint_y, batch_intent_y, batch_scene_y = prepare_batch(
+            batch, device, config, training=False
+        )
+        outputs = forward_feature_batch(model, feature_batch, config)
         loss, loss_parts = compute_loss(outputs, batch_joint_y, batch_intent_y, batch_scene_y, criteria, config)
         batch_size = int(batch_joint_y.size(0))
         total_loss += float(loss.item()) * batch_size
@@ -246,7 +332,14 @@ def encode_joint_labels(labels: np.ndarray) -> tuple[np.ndarray, LabelEncoder]:
     return encoder.transform(labels), encoder
 
 
-def split_train_val(config: E2EConfig, features: dict, joint_labels: np.ndarray, intent_labels: np.ndarray, scene_labels: np.ndarray):
+def split_train_val(
+    config: E2EConfig,
+    features: dict,
+    joint_labels: np.ndarray,
+    intent_labels: np.ndarray,
+    scene_labels: np.ndarray,
+    modality_masks: np.ndarray | None = None,
+):
     indices = np.arange(len(joint_labels))
     unique, counts = np.unique(joint_labels, return_counts=True)
     stratify = joint_labels if len(unique) > 1 and np.all(counts >= 2) else None
@@ -256,7 +349,7 @@ def split_train_val(config: E2EConfig, features: dict, joint_labels: np.ndarray,
         random_state=config.seed,
         stratify=stratify,
     )
-    return (
+    result = (
         {key: value[train_idx] for key, value in features.items()},
         {key: value[val_idx] for key, value in features.items()},
         joint_labels[train_idx],
@@ -266,16 +359,46 @@ def split_train_val(config: E2EConfig, features: dict, joint_labels: np.ndarray,
         scene_labels[train_idx],
         scene_labels[val_idx],
     )
+    if modality_masks is None:
+        return result
+    return (*result, modality_masks[train_idx], modality_masks[val_idx])
 
 
 def train(config: E2EConfig) -> Path:
     set_seed(config.seed)
+    if config.model == "robust_mask" and config.drop_one_prob + config.drop_two_prob > 1.0:
+        raise ValueError("drop_one_prob + drop_two_prob must be at most 1")
     run_dir = ensure_dir(config.output_dir / get_run_id())
     save_json(make_jsonable(config.__dict__), run_dir / "run_config.json")
+    if config.model == "robust_mask":
+        for key in (
+            "model",
+            "data_root",
+            "features_dir",
+            "cache_dir",
+            "output_dir",
+            "missing_manifest",
+            "use_modality_mask",
+            "modality_dropout",
+            "drop_one_prob",
+            "drop_two_prob",
+            "seed",
+            "epochs",
+            "batch_size",
+            "learning_rate",
+            "weight_decay",
+        ):
+            print(f"[config] {key}={getattr(config, key)}")
 
     print("[step] build train dataset from raw data paths")
     full_dataset = E2EMultimodalDataset(config, "train")
-    features, intent_labels, scene_labels, joint_labels = dataset_to_arrays(full_dataset)
+    if config.model == "robust_mask":
+        features, intent_labels, scene_labels, joint_labels, modality_masks = dataset_to_arrays_with_masks(
+            full_dataset
+        )
+    else:
+        features, intent_labels, scene_labels, joint_labels = dataset_to_arrays(full_dataset)
+        modality_masks = None
     print("train users: A, B")
     print(f"[split] train videos -> {describe_samples(full_dataset.samples)}")
 
@@ -288,7 +411,16 @@ def train(config: E2EConfig) -> Path:
         y_val_intent,
         y_train_scene,
         y_val_scene,
-    ) = split_train_val(config, features, joint_labels, intent_labels, scene_labels)
+        *mask_splits,
+    ) = split_train_val(
+        config,
+        features,
+        joint_labels,
+        intent_labels,
+        scene_labels,
+        modality_masks,
+    )
+    train_modality_masks, val_modality_masks = mask_splits if mask_splits else (None, None)
 
     scalers = fit_scalers(train_features_raw)
     train_features = apply_scalers(train_features_raw, scalers)
@@ -300,8 +432,24 @@ def train(config: E2EConfig) -> Path:
     joint_class_names = label_encoder.classes_.tolist()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader = make_loader(train_features, y_train, y_train_intent, y_train_scene, config.batch_size, True)
-    val_loader = make_loader(val_features, y_val, y_val_intent, y_val_scene, config.batch_size, False)
+    train_loader = make_loader(
+        train_features,
+        y_train,
+        y_train_intent,
+        y_train_scene,
+        config.batch_size,
+        True,
+        train_modality_masks,
+    )
+    val_loader = make_loader(
+        val_features,
+        y_val,
+        y_val_intent,
+        y_val_scene,
+        config.batch_size,
+        False,
+        val_modality_masks,
+    )
     model = build_model(
         config,
         len(label_encoder.classes_),
@@ -481,6 +629,11 @@ def main() -> None:
         output_dir=args.output_dir,
         cache_dir=args.cache_dir,
         features_dir=args.features_dir,
+        use_modality_mask=args.use_modality_mask or args.model == "robust_mask",
+        modality_dropout=args.modality_dropout if args.model == "robust_mask" else False,
+        drop_one_prob=args.drop_one_prob,
+        drop_two_prob=args.drop_two_prob,
+        missing_manifest=args.missing_manifest,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
